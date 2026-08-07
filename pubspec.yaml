@@ -1,13 +1,10 @@
 name: blue_mango
-
 description: "BlueMango - Anonymous Confessions & Honest Conversations"
-
 publish_to: "none"
-
 version: 1.0.0+1
 
 environment:
-  sdk: ">=3.8.0 <4.0.0"
+  sdk: ">=3.5.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -23,6 +20,11 @@ dependencies:
   firebase_messaging: ^15.2.9
   firebase_analytics: ^11.5.2
   firebase_crashlytics: ^4.3.9
+
+  # Sharing & Image Generation
+  share_plus: ^10.1.4
+  path_provider: ^2.1.5
+  widgets_to_image: ^1.0.0
 
   # Google Sign In
   google_sign_in: ^6.2.2
@@ -56,7 +58,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
 
-  flutter_lints: ^6.0.0
+  flutter_lints: ^5.0.0
 
 flutter:
   uses-material-design: true

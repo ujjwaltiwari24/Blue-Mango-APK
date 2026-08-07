@@ -1,14 +1,19 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import '../admin/admin_panel_screen.dart';
 import '../core/theme/app_theme.dart';
 import '../data/repositories/post_repository.dart';
 import '../home/utils/anonymous_identity.dart';
 import '../home/widgets/anonymous_post_card.dart';
 import '../home/widgets/empty_state.dart';
 import '../home/widgets/loading_card.dart';
+import '../inbox/inbox_screen.dart';
+import '../inbox/widgets/share_link_card.dart';
 import '../models/post_model.dart';
+import '../services/admin_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -20,6 +25,8 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   final _repository = PostRepository();
+  final _firestore = FirebaseFirestore.instance;
+  final _adminService = AdminService();
   late final TabController _tabController;
 
   StreamSubscription<User?>? _authSubscription;
@@ -36,17 +43,15 @@ class _ProfileScreenState extends State<ProfileScreen>
     _currentUser = FirebaseAuth.instance.currentUser;
     _setupStreamsForUser(_currentUser?.uid);
 
-    // Listen to Auth State changes to prevent streams from dropping on auth refresh
-    _authSubscription =
-        FirebaseAuth.instance.authStateChanges().listen((user) {
-          if (!mounted) return;
-          if (user?.uid != _currentUser?.uid) {
-            setState(() {
-              _currentUser = user;
-              _setupStreamsForUser(user?.uid);
-            });
-          }
+    _authSubscription = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (!mounted) return;
+      if (user?.uid != _currentUser?.uid) {
+        setState(() {
+          _currentUser = user;
+          _setupStreamsForUser(user?.uid);
         });
+      }
+    });
   }
 
   void _setupStreamsForUser(String? uid) {
@@ -74,14 +79,15 @@ class _ProfileScreenState extends State<ProfileScreen>
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppRadius.lg),
         ),
-        title: const Text('Sign Out'),
+        title: const Text('Sign Out', style: TextStyle(color: AppColors.textPrimary)),
         content: const Text(
           'Are you sure you want to log out? You will need to sign back in to interact or post.',
+          style: TextStyle(color: AppColors.muted),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.muted)),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
@@ -163,7 +169,7 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: Text('Delete', style: TextStyle(color: AppColors.error)),
+            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
           ),
         ],
       ),
@@ -213,13 +219,11 @@ class _ProfileScreenState extends State<ProfileScreen>
               );
             }
 
-            // Client-side in-memory sorting: avoids needing composite indexes in Firestore
             final rawUserPosts = userPostsSnapshot.data ?? const <PostModel>[];
             final userPosts = List<PostModel>.from(rawUserPosts)
               ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-            final visiblePostCount =
-                userPosts.where((p) => !p.isHidden).length;
+            final visiblePostCount = userPosts.where((p) => !p.isHidden).length;
             final hiddenPostCount = userPosts.length - visiblePostCount;
             final likesReceived = userPosts.fold<int>(
               0,
@@ -240,27 +244,35 @@ class _ProfileScreenState extends State<ProfileScreen>
                   );
                 }
 
-                // Client-side in-memory sorting: avoids needing composite indexes in Firestore
-                final rawBookmarks =
-                    bookmarksSnapshot.data ?? const <PostModel>[];
+                final rawBookmarks = bookmarksSnapshot.data ?? const <PostModel>[];
                 final bookmarks = List<PostModel>.from(rawBookmarks)
                   ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
                 final bookmarkCount = bookmarks.length;
                 final bool bookmarksLoading =
-                    bookmarksSnapshot.connectionState ==
-                        ConnectionState.waiting;
+                    bookmarksSnapshot.connectionState == ConnectionState.waiting;
 
                 return NestedScrollView(
                   headerSliverBuilder: (context, innerBoxIsScrolled) => [
                     SliverToBoxAdapter(
-                      child: _buildHeader(
-                        context,
-                        uid: uid,
-                        postCount: visiblePostCount,
-                        hiddenPostCount: hiddenPostCount,
-                        likesReceived: likesReceived,
-                        bookmarkCount: bookmarkCount,
+                      child: StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                        stream: _firestore.collection('users').doc(uid).snapshots(),
+                        builder: (context, userDocSnapshot) {
+                          final userData = userDocSnapshot.data?.data() ?? {};
+                          final customUsername = userData['username'] as String?;
+                          final usernameSlug = userData['usernameSlug'] as String?;
+
+                          return _buildHeader(
+                            context,
+                            uid: uid,
+                            customUsername: customUsername,
+                            usernameSlug: usernameSlug,
+                            postCount: visiblePostCount,
+                            hiddenPostCount: hiddenPostCount,
+                            likesReceived: likesReceived,
+                            bookmarkCount: bookmarkCount,
+                          );
+                        },
                       ),
                     ),
                     SliverPersistentHeader(
@@ -303,13 +315,19 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget _buildHeader(
       BuildContext context, {
         required String uid,
+        String? customUsername,
+        String? usernameSlug,
         required int postCount,
         required int hiddenPostCount,
         required int likesReceived,
         required int bookmarkCount,
       }) {
     final gradient = AnonymousIdentity.gradientFor(uid);
-    final alias = AnonymousIdentity.aliasFor(uid);
+    final fallbackAlias = AnonymousIdentity.aliasFor(uid);
+    final displayName = customUsername ?? fallbackAlias;
+    final handle = usernameSlug != null && usernameSlug.isNotEmpty
+        ? '@$usernameSlug'
+        : '@${displayName.toLowerCase().replaceAll(' ', '-')}';
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(
@@ -321,6 +339,7 @@ class _ProfileScreenState extends State<ProfileScreen>
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Navigation Bar
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -340,10 +359,28 @@ class _ProfileScreenState extends State<ProfileScreen>
                   letterSpacing: -0.5,
                 ),
               ),
-              _LogoutButton(onTap: _handleSignOut),
+              Row(
+                children: [
+                  _HeaderIconButton(
+                    icon: Icons.mail_outline_rounded,
+                    tooltip: 'Secret Inbox',
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const InboxScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: AppSpacing.xs),
+                  _LogoutButton(onTap: _handleSignOut),
+                ],
+              ),
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
+
+          // User Avatar & Identity
           Row(
             children: [
               Container(
@@ -365,9 +402,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                   ),
                   alignment: Alignment.center,
                   child: Text(
-                    AnonymousIdentity.initialFor(uid),
-                    style:
-                    Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    displayName.isNotEmpty
+                        ? displayName[0].toUpperCase()
+                        : AnonymousIdentity.initialFor(uid),
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: gradient.first,
                     ),
@@ -380,10 +418,16 @@ class _ProfileScreenState extends State<ProfileScreen>
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      alias,
-                      style:
-                      Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      displayName,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      handle,
+                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                        color: AppColors.muted,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -399,7 +443,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(
+                          const Icon(
                             Icons.shield_outlined,
                             size: 12,
                             color: AppColors.primaryBlue,
@@ -446,6 +490,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             ],
           ),
           const SizedBox(height: AppSpacing.xl),
+
+          // Statistics Cards
           Row(
             children: [
               _StatCard(label: 'Posts', value: '$postCount'),
@@ -457,63 +503,162 @@ class _ProfileScreenState extends State<ProfileScreen>
           ),
           const SizedBox(height: AppSpacing.lg),
 
+          // Share Link Card
+          const ShareLinkCard(),
+
+          const SizedBox(height: AppSpacing.md),
+
+          // Secret Inbox Action Tile
+          _MenuActionCard(
+            icon: Icons.inbox_rounded,
+            title: 'Secret Inbox',
+            subtitle: 'Read and manage incoming secret messages',
+            iconColor: AppColors.primaryBlue,
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const InboxScreen()),
+              );
+            },
+          ),
+
+          const SizedBox(height: AppSpacing.sm),
+
           // Account Info Tile
-          Material(
-            color: AppColors.cardBackground,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(AppRadius.lg),
-              onTap: () {
-                Navigator.of(context).pushNamed('/account-info');
-              },
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: AppSpacing.lg,
-                  vertical: AppSpacing.md,
-                ),
-                child: Row(
-                  children: [
-                    const Icon(
-                      Icons.manage_accounts_outlined,
-                      color: AppColors.primaryBlue,
-                      size: 22,
+          _MenuActionCard(
+            icon: Icons.manage_accounts_outlined,
+            title: 'Account Info',
+            subtitle: 'Manage email and custom username',
+            iconColor: Colors.purpleAccent,
+            onTap: () {
+              Navigator.of(context).pushNamed('/account-info');
+            },
+          ),
+
+          // 🔥 DYNAMIC FIRESTORE ADMIN PANEL ACCESS 🔥
+          FutureBuilder<Map<String, dynamic>?>(
+            future: _adminService.getAdminData(_currentUser?.email),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting ||
+                  snapshot.data == null) {
+                return const SizedBox.shrink();
+              }
+
+              final adminData = snapshot.data!;
+              final role =
+              (adminData['role'] ?? 'Admin').toString().toUpperCase();
+
+              return Padding(
+                padding: const EdgeInsets.only(top: AppSpacing.sm),
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.primaryBlue.withOpacity(0.12),
+                        Colors.purple.withOpacity(0.12),
+                      ],
                     ),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Account Info',
-                            style: Theme.of(context)
-                                .textTheme
-                                .titleMedium
-                                ?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(
+                      color: AppColors.primaryBlue.withOpacity(0.35),
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const AdminPanelScreen(),
                           ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'Manage email and custom username',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
-                              color: AppColors.textSecondary,
+                        );
+                      },
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: AppSpacing.lg,
+                          vertical: AppSpacing.md,
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: AppColors.primaryBlue.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(AppRadius.md),
+                              ),
+                              child: const Icon(
+                                Icons.admin_panel_settings_rounded,
+                                color: AppColors.primaryBlue,
+                                size: 22,
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(width: AppSpacing.md),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Text(
+                                        'Admin Dashboard',
+                                        style: Theme.of(context)
+                                            .textTheme
+                                            .titleMedium
+                                            ?.copyWith(
+                                          fontWeight: FontWeight.bold,
+                                          color: AppColors.primaryBlue,
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: AppColors.primaryBlue,
+                                          borderRadius:
+                                          BorderRadius.circular(4),
+                                        ),
+                                        child: Text(
+                                          role,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'System management & user moderation',
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .labelSmall
+                                        ?.copyWith(
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.primaryBlue,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const Icon(
-                      Icons.chevron_right_rounded,
-                      color: AppColors.muted,
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ),
+              );
+            },
           ),
+
+          const SizedBox(height: AppSpacing.md),
         ],
       ),
     );
@@ -569,6 +714,77 @@ class _ProfileScreenState extends State<ProfileScreen>
           onDelete: isOwnerTab ? () => _handleDelete(post) : null,
         );
       },
+    );
+  }
+}
+
+class _MenuActionCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color iconColor;
+  final VoidCallback onTap;
+
+  const _MenuActionCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.iconColor = AppColors.primaryBlue,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.cardBackground,
+      borderRadius: BorderRadius.circular(AppRadius.lg),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.lg,
+            vertical: AppSpacing.md,
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                ),
+                child: Icon(icon, color: iconColor, size: 20),
+              ),
+              const SizedBox(width: AppSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(
+                Icons.chevron_right_rounded,
+                color: AppColors.muted,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -668,7 +884,7 @@ class _LogoutButton extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
+              const Icon(
                 Icons.logout_rounded,
                 size: 16,
                 color: AppColors.error,
