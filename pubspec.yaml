@@ -1,4 +1,5 @@
 name: blue_mango
+
 description: "BlueMango - Anonymous Confessions & Honest Conversations"
 
 publish_to: "none"
@@ -11,8 +12,6 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
-    cloud_firestore: ^5.4.4
 
   cupertino_icons: ^1.0.8
 

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -19,31 +20,79 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen>
     with SingleTickerProviderStateMixin {
   final _repository = PostRepository();
-  late final TabController _tabController = TabController(length: 2, vsync: this);
+  late final TabController _tabController;
 
-  String get _uid => FirebaseAuth.instance.currentUser?.uid ?? '';
+  StreamSubscription<User?>? _authSubscription;
+  User? _currentUser;
 
-  late final Stream<List<PostModel>> _userPostsStream =
-  _repository.watchUserPosts(uid: _uid);
-  late final Stream<List<PostModel>> _bookmarkedPostsStream =
-  _repository.watchBookmarkedPosts(uid: _uid);
+  Stream<List<PostModel>>? _userPostsStream;
+  Stream<List<PostModel>>? _bookmarkedPostsStream;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+
+    _currentUser = FirebaseAuth.instance.currentUser;
+    _setupStreamsForUser(_currentUser?.uid);
+
+    // Listen to Auth State changes to prevent streams from dropping on auth refresh
+    _authSubscription =
+        FirebaseAuth.instance.authStateChanges().listen((user) {
+          if (!mounted) return;
+          if (user?.uid != _currentUser?.uid) {
+            setState(() {
+              _currentUser = user;
+              _setupStreamsForUser(user?.uid);
+            });
+          }
+        });
+  }
+
+  void _setupStreamsForUser(String? uid) {
+    if (uid != null && uid.isNotEmpty) {
+      _userPostsStream = _repository.watchUserPosts(uid: uid);
+      _bookmarkedPostsStream = _repository.watchBookmarkedPosts(uid: uid);
+    } else {
+      _userPostsStream = null;
+      _bookmarkedPostsStream = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    _tabController.dispose();
+    super.dispose();
+  }
 
   Future<void> _handleSignOut() async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-        title: const Text('Sign out?'),
-        content: const Text('You\'ll need to sign back in to post, like, or bookmark.'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        title: const Text('Sign Out'),
+        content: const Text(
+          'Are you sure you want to log out? You will need to sign back in to interact or post.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
             child: const Text('Cancel'),
           ),
-          TextButton(
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+            ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sign out'),
+            child: const Text('Sign Out'),
           ),
         ],
       ),
@@ -57,10 +106,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _handleLike(PostModel post) async {
+    final uid = _currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
     try {
       await _repository.toggleLike(
         postId: post.id,
-        uid: _uid,
+        uid: uid,
         isCurrentlyLiked: post.isLiked,
         isLegacyPost: post.isLegacyPost,
       );
@@ -70,10 +121,12 @@ class _ProfileScreenState extends State<ProfileScreen>
   }
 
   Future<void> _handleBookmark(PostModel post) async {
+    final uid = _currentUser?.uid ?? '';
+    if (uid.isEmpty) return;
     try {
       await _repository.toggleBookmark(
         postId: post.id,
-        uid: _uid,
+        uid: uid,
         isCurrentlyBookmarked: post.isBookmarked,
       );
     } catch (_) {
@@ -98,9 +151,11 @@ class _ProfileScreenState extends State<ProfileScreen>
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardBackground,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-        title: const Text('Delete this post?'),
-        content: const Text('This can\'t be undone.'),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        title: const Text('Delete post?'),
+        content: const Text('This action cannot be undone.'),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
@@ -125,71 +180,119 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   void _showError(String message) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
-  }
-
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final uid = _currentUser?.uid ?? '';
+
+    if (uid.isEmpty) {
+      return const Scaffold(
+        backgroundColor: AppColors.primaryBackground,
+        body: Center(
+          child: CircularProgressIndicator(color: AppColors.primaryBlue),
+        ),
+      );
+    }
+
     return Scaffold(
       backgroundColor: AppColors.primaryBackground,
       body: SafeArea(
         child: StreamBuilder<List<PostModel>>(
           stream: _userPostsStream,
           builder: (context, userPostsSnapshot) {
-            final userPosts = userPostsSnapshot.data ?? const <PostModel>[];
-            final visiblePostCount = userPosts.where((p) => !p.isHidden).length;
+            if (userPostsSnapshot.hasError) {
+              return Center(
+                child: Text(
+                  'Error loading posts: ${userPostsSnapshot.error}',
+                  style: const TextStyle(color: AppColors.error),
+                ),
+              );
+            }
+
+            // Client-side in-memory sorting: avoids needing composite indexes in Firestore
+            final rawUserPosts = userPostsSnapshot.data ?? const <PostModel>[];
+            final userPosts = List<PostModel>.from(rawUserPosts)
+              ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+            final visiblePostCount =
+                userPosts.where((p) => !p.isHidden).length;
             final hiddenPostCount = userPosts.length - visiblePostCount;
-            final likesReceived = userPosts.fold<int>(0, (sum, p) => sum + p.likeCount);
+            final likesReceived = userPosts.fold<int>(
+              0,
+                  (sum, p) => sum + p.likeCount,
+            );
             final bool userPostsLoading =
                 userPostsSnapshot.connectionState == ConnectionState.waiting;
 
-            return NestedScrollView(
-              headerSliverBuilder: (context, innerBoxIsScrolled) => [
-                SliverToBoxAdapter(
-                  child: _buildHeader(
-                    context,
-                    postCount: visiblePostCount,
-                    hiddenPostCount: hiddenPostCount,
-                    likesReceived: likesReceived,
-                  ),
-                ),
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _SegmentedTabBarDelegate(_tabController),
-                ),
-              ],
-              body: TabBarView(
-                controller: _tabController,
-                children: [
-                  _buildPostListFromData(
-                    posts: userPosts,
-                    isLoading: userPostsLoading,
-                    isOwnerTab: true,
-                    emptyIcon: Icons.edit_note_rounded,
-                    emptyTitle: 'No posts yet',
-                    emptyMessage: 'Everything you share, anonymously,\nwill show up here.',
-                  ),
-                  StreamBuilder<List<PostModel>>(
-                    stream: _bookmarkedPostsStream,
-                    builder: (context, bookmarksSnapshot) {
-                      return _buildPostListFromData(
-                        posts: bookmarksSnapshot.data ?? const <PostModel>[],
-                        isLoading: bookmarksSnapshot.connectionState == ConnectionState.waiting,
+            return StreamBuilder<List<PostModel>>(
+              stream: _bookmarkedPostsStream,
+              builder: (context, bookmarksSnapshot) {
+                if (bookmarksSnapshot.hasError) {
+                  return Center(
+                    child: Text(
+                      'Error loading bookmarks: ${bookmarksSnapshot.error}',
+                      style: const TextStyle(color: AppColors.error),
+                    ),
+                  );
+                }
+
+                // Client-side in-memory sorting: avoids needing composite indexes in Firestore
+                final rawBookmarks =
+                    bookmarksSnapshot.data ?? const <PostModel>[];
+                final bookmarks = List<PostModel>.from(rawBookmarks)
+                  ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+                final bookmarkCount = bookmarks.length;
+                final bool bookmarksLoading =
+                    bookmarksSnapshot.connectionState ==
+                        ConnectionState.waiting;
+
+                return NestedScrollView(
+                  headerSliverBuilder: (context, innerBoxIsScrolled) => [
+                    SliverToBoxAdapter(
+                      child: _buildHeader(
+                        context,
+                        uid: uid,
+                        postCount: visiblePostCount,
+                        hiddenPostCount: hiddenPostCount,
+                        likesReceived: likesReceived,
+                        bookmarkCount: bookmarkCount,
+                      ),
+                    ),
+                    SliverPersistentHeader(
+                      pinned: true,
+                      delegate: _SegmentedTabBarDelegate(_tabController),
+                    ),
+                  ],
+                  body: TabBarView(
+                    controller: _tabController,
+                    children: [
+                      _buildPostListFromData(
+                        posts: userPosts,
+                        isLoading: userPostsLoading,
+                        isOwnerTab: true,
+                        emptyIcon: Icons.edit_note_rounded,
+                        emptyTitle: 'No posts yet',
+                        emptyMessage:
+                        'Everything you share anonymously will show up here.',
+                      ),
+                      _buildPostListFromData(
+                        posts: bookmarks,
+                        isLoading: bookmarksLoading,
                         isOwnerTab: false,
                         emptyIcon: Icons.bookmark_border_rounded,
                         emptyTitle: 'No bookmarks yet',
-                        emptyMessage: 'Save posts you want to\nfind again later.',
-                      );
-                    },
+                        emptyMessage:
+                        'Posts you save will appear here for easy access.',
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         ),
@@ -199,41 +302,76 @@ class _ProfileScreenState extends State<ProfileScreen>
 
   Widget _buildHeader(
       BuildContext context, {
+        required String uid,
         required int postCount,
         required int hiddenPostCount,
         required int likesReceived,
+        required int bookmarkCount,
       }) {
-    final gradient = AnonymousIdentity.gradientFor(_uid);
-    final alias = AnonymousIdentity.aliasFor(_uid);
+    final gradient = AnonymousIdentity.gradientFor(uid);
+    final alias = AnonymousIdentity.aliasFor(uid);
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, AppSpacing.md, AppSpacing.lg, AppSpacing.lg),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.lg,
+        AppSpacing.md,
+        AppSpacing.lg,
+        AppSpacing.md,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Profile', style: Theme.of(context).textTheme.titleMedium),
-              const Spacer(),
-              _CircleIconButton(icon: Icons.logout_rounded, onTap: _handleSignOut),
+              _HeaderIconButton(
+                icon: Icons.arrow_back_ios_new_rounded,
+                tooltip: 'Back',
+                onTap: () {
+                  if (Navigator.canPop(context)) {
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+              Text(
+                'Profile',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              _LogoutButton(onTap: _handleSignOut),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.xl),
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                height: 72,
-                width: 72,
+                padding: const EdgeInsets.all(3),
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: LinearGradient(colors: gradient),
-                  boxShadow: AppColors.glow(color: gradient.first, opacity: 0.3),
+                  boxShadow: AppColors.glow(
+                    color: gradient.first,
+                    opacity: 0.35,
+                  ),
                 ),
-                alignment: Alignment.center,
-                child: Text(
-                  AnonymousIdentity.initialFor(_uid),
-                  style: Theme.of(context).textTheme.headlineMedium,
+                child: Container(
+                  height: 72,
+                  width: 72,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppColors.primaryBackground,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    AnonymousIdentity.initialFor(uid),
+                    style:
+                    Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: gradient.first,
+                    ),
+                  ),
                 ),
               ),
               const SizedBox(width: AppSpacing.md),
@@ -241,24 +379,63 @@ class _ProfileScreenState extends State<ProfileScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(alias, style: Theme.of(context).textTheme.headlineMedium),
-                    const SizedBox(height: 4),
-                    Row(
-                      children: [
-                        const Icon(Icons.shield_outlined, size: 14, color: AppColors.muted),
-                        const SizedBox(width: 4),
-                        Text('Anonymous identity', style: Theme.of(context).textTheme.labelSmall),
-                      ],
+                    Text(
+                      alias,
+                      style:
+                      Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    if (hiddenPostCount > 0) ...[
-                      const SizedBox(height: 4),
-                      Row(
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: AppSpacing.sm,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.secondaryCard,
+                        borderRadius: BorderRadius.circular(AppRadius.pill),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.visibility_off_rounded, size: 14, color: AppColors.muted),
+                          Icon(
+                            Icons.shield_outlined,
+                            size: 12,
+                            color: AppColors.primaryBlue,
+                          ),
                           const SizedBox(width: 4),
                           Text(
-                            '$hiddenPostCount hidden ${hiddenPostCount == 1 ? 'post' : 'posts'}',
-                            style: Theme.of(context).textTheme.labelSmall,
+                            'Anonymous Persona',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                              color: AppColors.textSecondary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (hiddenPostCount > 0) ...[
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          const Icon(
+                            Icons.visibility_off_rounded,
+                            size: 13,
+                            color: AppColors.muted,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$hiddenPostCount hidden',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                              color: AppColors.muted,
+                            ),
                           ),
                         ],
                       ),
@@ -268,13 +445,74 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
             ],
           ),
-          const SizedBox(height: AppSpacing.lg),
+          const SizedBox(height: AppSpacing.xl),
           Row(
             children: [
               _StatCard(label: 'Posts', value: '$postCount'),
               const SizedBox(width: AppSpacing.sm),
-              _StatCard(label: 'Likes received', value: '$likesReceived'),
+              _StatCard(label: 'Likes', value: '$likesReceived'),
+              const SizedBox(width: AppSpacing.sm),
+              _StatCard(label: 'Saved', value: '$bookmarkCount'),
             ],
+          ),
+          const SizedBox(height: AppSpacing.lg),
+
+          // Account Info Tile
+          Material(
+            color: AppColors.cardBackground,
+            borderRadius: BorderRadius.circular(AppRadius.lg),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(AppRadius.lg),
+              onTap: () {
+                Navigator.of(context).pushNamed('/account-info');
+              },
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.lg,
+                  vertical: AppSpacing.md,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.manage_accounts_outlined,
+                      color: AppColors.primaryBlue,
+                      size: 22,
+                    ),
+                    const SizedBox(width: AppSpacing.md),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Account Info',
+                            style: Theme.of(context)
+                                .textTheme
+                                .titleMedium
+                                ?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Manage email and custom username',
+                            style: Theme.of(context)
+                                .textTheme
+                                .labelSmall
+                                ?.copyWith(
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Icon(
+                      Icons.chevron_right_rounded,
+                      color: AppColors.muted,
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -301,13 +539,20 @@ class _ProfileScreenState extends State<ProfileScreen>
       return ListView(
         padding: EdgeInsets.zero,
         children: [
-          EmptyState(icon: emptyIcon, title: emptyTitle, message: emptyMessage),
+          EmptyState(
+            icon: emptyIcon,
+            title: emptyTitle,
+            message: emptyMessage,
+          ),
         ],
       );
     }
 
     return ListView.builder(
-      padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.xxl),
+      padding: const EdgeInsets.only(
+        top: AppSpacing.sm,
+        bottom: AppSpacing.xxl,
+      ),
       itemCount: posts.length,
       itemBuilder: (context, index) {
         final post = posts[index];
@@ -341,14 +586,27 @@ class _StatCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
         decoration: BoxDecoration(
           color: AppColors.cardBackground,
-          borderRadius: BorderRadius.circular(AppRadius.md),
-          border: Border.all(color: AppColors.divider, width: 0.7),
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+          border: Border.all(
+            color: AppColors.divider.withOpacity(0.08),
+            width: 1,
+          ),
         ),
         child: Column(
           children: [
-            Text(value, style: Theme.of(context).textTheme.headlineMedium),
+            Text(
+              value,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
             const SizedBox(height: 2),
-            Text(label, style: Theme.of(context).textTheme.labelSmall),
+            Text(
+              label,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                color: AppColors.muted,
+              ),
+            ),
           ],
         ),
       ),
@@ -356,16 +614,21 @@ class _StatCard extends StatelessWidget {
   }
 }
 
-class _CircleIconButton extends StatelessWidget {
-  const _CircleIconButton({required this.icon, required this.onTap});
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onTap,
+    this.tooltip,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
+  final String? tooltip;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.secondaryCard,
+    final button = Material(
+      color: AppColors.cardBackground,
       shape: const CircleBorder(),
       child: InkWell(
         customBorder: const CircleBorder(),
@@ -376,57 +639,112 @@ class _CircleIconButton extends StatelessWidget {
         ),
       ),
     );
+
+    if (tooltip != null) {
+      return Tooltip(message: tooltip!, child: button);
+    }
+    return button;
   }
 }
 
-/// Pinned, pill-style segmented tab bar — a more premium alternative
-/// to the default underline TabBar, matching the app's rounded,
-/// gradient-accented design language.
+class _LogoutButton extends StatelessWidget {
+  const _LogoutButton({required this.onTap});
+
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.error.withOpacity(0.1),
+      borderRadius: BorderRadius.circular(AppRadius.pill),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(AppRadius.pill),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.md,
+            vertical: AppSpacing.sm,
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.logout_rounded,
+                size: 16,
+                color: AppColors.error,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                'Logout',
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: AppColors.error,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _SegmentedTabBarDelegate extends SliverPersistentHeaderDelegate {
   _SegmentedTabBarDelegate(this.controller);
 
   final TabController controller;
 
   @override
-  double get minExtent => 60;
+  double get minExtent => 52.0;
 
   @override
-  double get maxExtent => 60;
+  double get maxExtent => 52.0;
 
   @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Container(
-      color: AppColors.primaryBackground,
-      padding: const EdgeInsets.fromLTRB(AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.sm),
+  Widget build(
+      BuildContext context,
+      double shrinkOffset,
+      bool overlapsContent,
+      ) {
+    return SizedBox(
+      height: 52.0,
       child: Container(
-        height: 44,
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: AppColors.secondaryCard,
-          borderRadius: BorderRadius.circular(AppRadius.pill),
-        ),
-        child: TabBar(
-          controller: controller,
-          dividerColor: Colors.transparent,
-          indicatorSize: TabBarIndicatorSize.tab,
-          indicator: BoxDecoration(
-            gradient: AppColors.primaryGradient,
+        color: AppColors.primaryBackground,
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+        child: Container(
+          height: 44,
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: AppColors.secondaryCard,
             borderRadius: BorderRadius.circular(AppRadius.pill),
           ),
-          labelColor: Colors.white,
-          unselectedLabelColor: AppColors.muted,
-          labelStyle: Theme.of(context).textTheme.labelLarge,
-          unselectedLabelStyle: Theme.of(context).textTheme.bodyMedium,
-          splashBorderRadius: BorderRadius.circular(AppRadius.pill),
-          tabs: const [
-            Tab(text: 'My Posts'),
-            Tab(text: 'Bookmarks'),
-          ],
+          child: TabBar(
+            controller: controller,
+            dividerColor: Colors.transparent,
+            indicatorSize: TabBarIndicatorSize.tab,
+            indicator: BoxDecoration(
+              gradient: AppColors.primaryGradient,
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            labelColor: Colors.white,
+            unselectedLabelColor: AppColors.muted,
+            labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+            unselectedLabelStyle: Theme.of(context).textTheme.bodyMedium,
+            splashBorderRadius: BorderRadius.circular(AppRadius.pill),
+            tabs: const [
+              Tab(text: 'My Posts'),
+              Tab(text: 'Bookmarks'),
+            ],
+          ),
         ),
       ),
     );
   }
 
   @override
-  bool shouldRebuild(covariant _SegmentedTabBarDelegate oldDelegate) => false;
+  bool shouldRebuild(covariant _SegmentedTabBarDelegate oldDelegate) {
+    return oldDelegate.controller != controller;
+  }
 }

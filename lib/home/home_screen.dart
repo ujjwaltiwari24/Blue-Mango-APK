@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/theme/app_theme.dart';
 import '../data/repositories/post_repository.dart';
+import '../home/widgets/app_drawer.dart';
 import '../models/post_model.dart';
 import '../models/story_model.dart';
 import 'widgets/bottom_navigation.dart';
@@ -19,15 +20,13 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _repository = PostRepository();
 
   HomeTab _currentTab = HomeTab.home;
   String? _uid;
   bool _authReady = false;
 
-  /// Stories remain local/mock for now — wiring them to Firestore is
-  /// a separate pass (they need expiry/view-tracking semantics that
-  /// don't belong bolted onto the post repository).
   final List<StoryModel> _stories = const [];
 
   @override
@@ -44,6 +43,45 @@ class _HomeScreenState extends State<HomeScreen> {
       _uid = user!.uid;
       _authReady = true;
     });
+  }
+
+  Future<void> _handleSignOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBackground,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppRadius.lg),
+        ),
+        title: const Text('Sign Out'),
+        content: const Text(
+          'Are you sure you want to log out? You will need to sign back in to interact or post.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppRadius.sm),
+              ),
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    await FirebaseAuth.instance.signOut();
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
 
   Future<void> _handleLike(PostModel post) async {
@@ -94,26 +132,23 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _openSearch() async {
-    // TODO(search-phase): Navigate to Search screen.
-    // No push yet — resetting immediately so the nav doesn't
-    // stay stuck highlighting a tab with nothing behind it.
     if (!mounted) return;
     setState(() => _currentTab = HomeTab.home);
   }
 
   Future<void> _openNotifications() async {
-    // TODO(notifications-phase): Navigate to Notifications screen.
     if (!mounted) return;
     setState(() => _currentTab = HomeTab.home);
   }
 
   Future<void> _openProfile() async {
     await Navigator.of(context).pushNamed('/profile');
-    // Returned from Profile — go back to highlighting Home instead
-    // of leaving the nav bar showing Profile as active while the
-    // feed is what's actually on screen.
     if (!mounted) return;
     setState(() => _currentTab = HomeTab.home);
+  }
+
+  void _openDrawer() {
+    _scaffoldKey.currentState?.openDrawer();
   }
 
   void _handleTabSelected(HomeTab tab) {
@@ -150,15 +185,25 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    final double bottomPadding = MediaQuery.paddingOf(context).bottom;
+
     return Scaffold(
+      key: _scaffoldKey,
       backgroundColor: AppColors.primaryBackground,
-      extendBody: true,
-      appBar: HomeAppBar(
-        currentUserSeed: _uid!,
-        hasUnreadNotifications: true,
-        onSearchTap: _openSearch,
-        onNotificationsTap: _openNotifications,
-        onProfileTap: _openProfile,
+      drawer: AppDrawer(
+        uid: _uid!,
+        onSignOut: _handleSignOut,
+      ),
+      appBar: PreferredSize(
+        preferredSize: const Size.fromHeight(64.0),
+        child: HomeAppBar(
+          currentUserSeed: _uid!,
+          hasUnreadNotifications: true,
+          onMenuTap: _openDrawer,
+          onSearchTap: _openSearch,
+          onNotificationsTap: _openNotifications,
+          onProfileTap: _openProfile,
+        ),
       ),
       body: StreamBuilder<List<PostModel>>(
         stream: _repository.watchFeed(currentUid: _uid!),
@@ -169,22 +214,22 @@ class _HomeScreenState extends State<HomeScreen> {
           return RefreshIndicator(
             color: AppColors.primaryBlue,
             backgroundColor: AppColors.cardBackground,
-            // The feed is a live snapshot listener, so it's already
-            // current — this just gives the pull gesture a brief,
-            // expected visual response rather than doing nothing.
             onRefresh: () => Future<void>.delayed(const Duration(milliseconds: 400)),
             child: CustomScrollView(
-              physics: const AlwaysScrollableScrollPhysics(),
+              physics: const AlwaysScrollableScrollPhysics(
+                parent: BouncingScrollPhysics(),
+              ),
               slivers: [
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.md),
-                    child: StoryList(
-                      stories: _stories,
-                      onStoryTap: (story) {},
+                if (_stories.isNotEmpty)
+                  SliverPadding(
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
+                    sliver: SliverToBoxAdapter(
+                      child: StoryList(
+                        stories: _stories,
+                        onStoryTap: (story) {},
+                      ),
                     ),
                   ),
-                ),
                 HomeFeed(
                   posts: posts,
                   isLoading: isLoading,
@@ -194,28 +239,21 @@ class _HomeScreenState extends State<HomeScreen> {
                   onShare: _handleShare,
                   onCreatePost: _openCreatePost,
                 ),
-                const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                SliverToBoxAdapter(
+                  child: SizedBox(
+                    height: kBottomNavigationBarHeight + bottomPadding + AppSpacing.lg,
+                  ),
+                ),
               ],
             ),
           );
         },
       ),
-      bottomNavigationBar: SizedBox(
-        height: 84,
-        child: Stack(
-          alignment: Alignment.bottomCenter,
-          clipBehavior: Clip.none,
-          children: [
-            BottomNavigation(
-              currentTab: _currentTab,
-              onTabSelected: _handleTabSelected,
-            ),
-            Positioned(
-              bottom: 28,
-              child: FloatingCreateButton(onTap: _openCreatePost),
-            ),
-          ],
-        ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButton: FloatingCreateButton(onTap: _openCreatePost),
+      bottomNavigationBar: BottomNavigation(
+        currentTab: _currentTab,
+        onTabSelected: _handleTabSelected,
       ),
     );
   }

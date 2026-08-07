@@ -13,8 +13,9 @@ import '../../home/home_screen.dart';
 // Create / Edit Post
 import '../../create_post/create_post_screen.dart';
 
-// Profile
+// Profile & Account Info
 import '../../profile/profile_screen.dart';
+import '../../screens/account_info_screen.dart'; // Import Account Info Screen
 
 // Models
 import '../../models/post_model.dart';
@@ -45,6 +46,7 @@ class AppRouter {
         );
 
       case "/feed":
+      case "/home": // Added alias in case pushNamed('/home') is called
         return MaterialPageRoute(
           builder: (_) => const HomeScreen(),
         );
@@ -65,6 +67,11 @@ class AppRouter {
       case "/profile":
         return MaterialPageRoute(
           builder: (_) => const ProfileScreen(),
+        );
+
+      case "/account-info": // Registered Account Info Route
+        return MaterialPageRoute(
+          builder: (_) => const AccountInfoScreen(),
         );
 
       default:
