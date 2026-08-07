@@ -12,11 +12,11 @@ dependencies:
   flutter:
     sdk: flutter
 
+    cloud_firestore: ^5.4.4
+
   cupertino_icons: ^1.0.8
 
-  # =========================
   # Firebase
-  # =========================
   firebase_core: ^3.15.1
   firebase_auth: ^5.6.2
   cloud_firestore: ^5.6.11
@@ -25,28 +25,23 @@ dependencies:
   firebase_analytics: ^11.5.2
   firebase_crashlytics: ^4.3.9
 
-  # =========================
+  # Google Sign In
+  google_sign_in: ^6.2.2
+
   # State Management
-  # =========================
   flutter_riverpod: ^2.6.1
 
-  # =========================
   # Navigation
-  # =========================
   go_router: ^15.1.2
 
-  # =========================
   # UI
-  # =========================
   google_fonts: ^6.2.1
   flutter_svg: ^2.1.0
   cached_network_image: ^3.4.1
   shimmer: ^3.0.0
   lottie: ^3.3.1
 
-  # =========================
   # Utilities
-  # =========================
   intl: ^0.20.2
   uuid: ^4.5.1
   equatable: ^2.0.7
@@ -65,24 +60,9 @@ dev_dependencies:
   flutter_lints: ^6.0.0
 
 flutter:
-
   uses-material-design: true
 
   assets:
     - assets/images/
     - assets/icons/
     - assets/animations/
-
-google_sign_in: ^6.2.1
-  # Uncomment when we add custom fonts
-  #
-  # fonts:
-  #   - family: Inter
-  #     fonts:
-  #       - asset: assets/fonts/Inter-Regular.ttf
-  #       - asset: assets/fonts/Inter-Medium.ttf
-  #         weight: 500
-  #       - asset: assets/fonts/Inter-SemiBold.ttf
-  #         weight: 600
-  #       - asset: assets/fonts/Inter-Bold.ttf
-  #         weight: 700

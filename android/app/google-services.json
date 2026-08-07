@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "440718406293-n6uo6au7rpdjao9qfeap7fioe7kcct0m.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.bluemango",
+            "certificate_hash": "7620c5b59dc85e8cfce3c79abecba80cf8d6be2a"
+          }
+        },
+        {
           "client_id": "440718406293-desbn7f4p2g1m3pvqsfdgnsusif6khcj.apps.googleusercontent.com",
           "client_type": 3
         }

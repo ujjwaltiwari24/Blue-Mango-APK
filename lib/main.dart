@@ -40,7 +40,7 @@ class BlueMangoApp extends StatelessWidget {
     return MaterialApp(
       title: "BlueMango",
       debugShowCheckedModeBanner: false,
-      theme: AppTheme.dark,
+      theme: AppTheme.darkTheme,
       onGenerateRoute: AppRouter.generate,
       initialRoute: "/",
     );

@@ -8,7 +8,16 @@ import '../../screens/auth/register_screen.dart';
 import '../../screens/auth/forgot_password_screen.dart';
 
 // Home
-import '../../screens/home/home_screen.dart';
+import '../../home/home_screen.dart';
+
+// Create / Edit Post
+import '../../create_post/create_post_screen.dart';
+
+// Profile
+import '../../profile/profile_screen.dart';
+
+// Models
+import '../../models/post_model.dart';
 
 class AppRouter {
   AppRouter._();
@@ -38,6 +47,24 @@ class AppRouter {
       case "/feed":
         return MaterialPageRoute(
           builder: (_) => const HomeScreen(),
+        );
+
+      case "/create-post":
+        return MaterialPageRoute(
+          builder: (_) => const CreatePostScreen(),
+          fullscreenDialog: true,
+        );
+
+      case "/edit-post":
+        final post = settings.arguments as PostModel;
+        return MaterialPageRoute(
+          builder: (_) => CreatePostScreen(editingPost: post),
+          fullscreenDialog: true,
+        );
+
+      case "/profile":
+        return MaterialPageRoute(
+          builder: (_) => const ProfileScreen(),
         );
 
       default:
