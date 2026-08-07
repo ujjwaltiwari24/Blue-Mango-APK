@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "440718406293",
+    "project_id": "bluemango-4b2c1",
+    "storage_bucket": "bluemango-4b2c1.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:440718406293:android:b2e998d90865dd8402e19c",
+        "android_client_info": {
+          "package_name": "com.bluemango"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "440718406293-desbn7f4p2g1m3pvqsfdgnsusif6khcj.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDBGddVQn9ctJnGK1llLrK76QNHnYvV0L0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "440718406293-desbn7f4p2g1m3pvqsfdgnsusif6khcj.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
