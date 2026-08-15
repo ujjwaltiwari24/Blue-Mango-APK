@@ -2,18 +2,20 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
-import '../admin/admin_panel_screen.dart';
-import '../core/theme/app_theme.dart';
-import '../data/repositories/post_repository.dart';
-import '../home/utils/anonymous_identity.dart';
-import '../home/widgets/anonymous_post_card.dart';
-import '../home/widgets/empty_state.dart';
-import '../home/widgets/loading_card.dart';
-import '../inbox/inbox_screen.dart';
-import '../inbox/widgets/share_link_card.dart';
-import '../models/post_model.dart';
-import '../services/admin_service.dart';
+import '../../admin/admin_panel_screen.dart';
+import '../../core/theme/app_theme.dart';
+import '../../data/repositories/post_repository.dart';
+import '../../home/utils/anonymous_identity.dart';
+import '../../home/widgets/anonymous_post_card.dart';
+import '../../home/widgets/empty_state.dart';
+import '../../home/widgets/loading_card.dart';
+import '../../inbox/inbox_screen.dart';
+import '../../inbox/widgets/share_link_card.dart';
+import '../../models/post_model.dart';
+import '../../services/admin_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -75,30 +77,49 @@ class _ProfileScreenState extends State<ProfileScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardBackground,
+        backgroundColor: const Color(0xff111114),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withOpacity(0.1)),
         ),
-        title: const Text('Sign Out', style: TextStyle(color: AppColors.textPrimary)),
-        content: const Text(
+        title: Text(
+          'Sign Out',
+          style: GoogleFonts.plusJakartaSans(
+            color: const Color(0xffF4F4F5),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
           'Are you sure you want to log out? You will need to sign back in to interact or post.',
-          style: TextStyle(color: AppColors.muted),
+          style: GoogleFonts.plusJakartaSans(
+            color: const Color(0xffA1A1AA),
+            fontSize: 14,
+          ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel', style: TextStyle(color: AppColors.muted)),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.plusJakartaSans(
+                color: const Color(0xff7D8597),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: AppColors.error,
+              backgroundColor: const Color(0xffEF4444),
               foregroundColor: Colors.white,
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(AppRadius.sm),
+                borderRadius: BorderRadius.circular(10),
               ),
             ),
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sign Out'),
+            child: Text(
+              'Sign Out',
+              style: GoogleFonts.plusJakartaSans(fontWeight: FontWeight.w700),
+            ),
           ),
         ],
       ),
@@ -109,6 +130,185 @@ class _ProfileScreenState extends State<ProfileScreen>
     await FirebaseAuth.instance.signOut();
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
+  /// Dialogue to edit username with 30-day cooldown enforcement
+  Future<void> _showEditUsernameDialog(
+      Map<String, dynamic> userData, String uid) async {
+    final currentUsername =
+        userData['username'] as String? ?? userData['usernameSlug'] as String? ?? '';
+    final lastChangedTimestamp = userData['lastUsernameChange'] as Timestamp?;
+
+    // Cooldown Validation: 30 days
+    if (lastChangedTimestamp != null) {
+      final lastChangedDate = lastChangedTimestamp.toDate();
+      final nextAllowedDate = lastChangedDate.add(const Duration(days: 30));
+      final now = DateTime.now();
+
+      if (now.isBefore(nextAllowedDate)) {
+        final daysRemaining = nextAllowedDate.difference(now).inDays + 1;
+        _showNotification(
+          'Username can only be changed once every 30 days. Try again in $daysRemaining day(s).',
+          isError: true,
+        );
+        return;
+      }
+    }
+
+    final controller = TextEditingController(text: currentUsername);
+    bool isSaving = false;
+
+    await showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: const Color(0xff111114),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.white.withOpacity(0.1)),
+              ),
+              title: Text(
+                'Change Username',
+                style: GoogleFonts.plusJakartaSans(
+                  color: const Color(0xffF4F4F5),
+                  fontWeight: FontWeight.w700,
+                  fontSize: 18,
+                ),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Choose a unique handle. Note: You can only change your username once every 30 days.',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xff7D8597),
+                      fontSize: 13,
+                      height: 1.4,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: controller,
+                    enabled: !isSaving,
+                    autofocus: true,
+                    style: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xffF4F4F5),
+                    ),
+                    decoration: InputDecoration(
+                      prefixText: '@ ',
+                      prefixStyle: GoogleFonts.plusJakartaSans(
+                        color: const Color(0xff046CC8),
+                        fontWeight: FontWeight.w700,
+                      ),
+                      hintText: 'new_username',
+                      hintStyle: GoogleFonts.plusJakartaSans(
+                        color: const Color(0xff5C677D),
+                      ),
+                      filled: true,
+                      fillColor: const Color(0xff18181B),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(
+                          color: Colors.white.withOpacity(0.08),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xff046CC8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                  child: Text(
+                    'Cancel',
+                    style: GoogleFonts.plusJakartaSans(
+                      color: const Color(0xff7D8597),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xff046CC8),
+                    foregroundColor: const Color(0xffF4F4F5),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                    final newUsername = controller.text.trim();
+                    if (newUsername.isEmpty) {
+                      _showNotification(
+                        'Username cannot be empty.',
+                        isError: true,
+                      );
+                      return;
+                    }
+
+                    if (newUsername.length < 3 || newUsername.length > 20) {
+                      _showNotification(
+                        'Username must be between 3 and 20 characters.',
+                        isError: true,
+                      );
+                      return;
+                    }
+
+                    final sanitizedSlug = newUsername
+                        .toLowerCase()
+                        .replaceAll(RegExp(r'[^a-z0-9_]'), '');
+
+                    setDialogState(() => isSaving = true);
+
+                    try {
+                      await _firestore.collection('users').doc(uid).update({
+                        'username': newUsername,
+                        'usernameSlug': sanitizedSlug,
+                        'lastUsernameChange': FieldValue.serverTimestamp(),
+                      });
+
+                      if (mounted) {
+                        Navigator.pop(dialogContext);
+                        _showNotification('Username updated successfully!');
+                      }
+                    } catch (_) {
+                      setDialogState(() => isSaving = false);
+                      _showNotification(
+                        'Failed to update username. Try again.',
+                        isError: true,
+                      );
+                    }
+                  },
+                  child: isSaving
+                      ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                      : Text(
+                    'Save',
+                    style: GoogleFonts.plusJakartaSans(
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _handleLike(PostModel post) async {
@@ -122,7 +322,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         isLegacyPost: post.isLegacyPost,
       );
     } catch (_) {
-      _showError('Couldn\'t update like. Try again.');
+      _showNotification('Couldn\'t update like. Try again.', isError: true);
     }
   }
 
@@ -136,7 +336,7 @@ class _ProfileScreenState extends State<ProfileScreen>
         isCurrentlyBookmarked: post.isBookmarked,
       );
     } catch (_) {
-      _showError('Couldn\'t update bookmark. Try again.');
+      _showNotification('Couldn\'t update bookmark. Try again.', isError: true);
     }
   }
 
@@ -148,7 +348,7 @@ class _ProfileScreenState extends State<ProfileScreen>
     try {
       await _repository.setHidden(postId: post.id, hidden: !post.isHidden);
     } catch (_) {
-      _showError('Couldn\'t update visibility. Try again.');
+      _showNotification('Couldn\'t update visibility. Try again.', isError: true);
     }
   }
 
@@ -156,20 +356,41 @@ class _ProfileScreenState extends State<ProfileScreen>
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: AppColors.cardBackground,
+        backgroundColor: const Color(0xff111114),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(AppRadius.lg),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withOpacity(0.1)),
         ),
-        title: const Text('Delete post?'),
-        content: const Text('This action cannot be undone.'),
+        title: Text(
+          'Delete post?',
+          style: GoogleFonts.plusJakartaSans(
+            color: const Color(0xffF4F4F5),
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        content: Text(
+          'This action cannot be undone.',
+          style: GoogleFonts.plusJakartaSans(
+            color: const Color(0xffA1A1AA),
+          ),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: GoogleFonts.plusJakartaSans(color: const Color(0xff7D8597)),
+            ),
           ),
           TextButton(
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete', style: TextStyle(color: AppColors.error)),
+            child: Text(
+              'Delete',
+              style: GoogleFonts.plusJakartaSans(
+                color: const Color(0xffEF4444),
+                fontWeight: FontWeight.w700,
+              ),
+            ),
           ),
         ],
       ),
@@ -180,14 +401,33 @@ class _ProfileScreenState extends State<ProfileScreen>
     try {
       await _repository.deletePost(post.id);
     } catch (_) {
-      _showError('Couldn\'t delete post. Try again.');
+      _showNotification('Couldn\'t delete post. Try again.', isError: true);
     }
   }
 
-  void _showError(String message) {
+  void _showNotification(String message, {bool isError = false}) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message)),
+      SnackBar(
+        backgroundColor: const Color(0xff18181B),
+        behavior: SnackBarBehavior.floating,
+        margin: const EdgeInsets.all(16),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(
+            color: isError ? const Color(0xffEF4444) : const Color(0xff046CC8),
+            width: 1,
+          ),
+        ),
+        content: Text(
+          message,
+          style: GoogleFonts.plusJakartaSans(
+            color: const Color(0xffF4F4F5),
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
     );
   }
 
@@ -213,8 +453,8 @@ class _ProfileScreenState extends State<ProfileScreen>
             if (userPostsSnapshot.hasError) {
               return Center(
                 child: Text(
-                  'Error loading posts: ${userPostsSnapshot.error}',
-                  style: const TextStyle(color: AppColors.error),
+                  'Error loading posts.',
+                  style: GoogleFonts.plusJakartaSans(color: AppColors.error),
                 ),
               );
             }
@@ -238,8 +478,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                 if (bookmarksSnapshot.hasError) {
                   return Center(
                     child: Text(
-                      'Error loading bookmarks: ${bookmarksSnapshot.error}',
-                      style: const TextStyle(color: AppColors.error),
+                      'Error loading bookmarks.',
+                      style: GoogleFonts.plusJakartaSans(color: AppColors.error),
                     ),
                   );
                 }
@@ -265,6 +505,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                           return _buildHeader(
                             context,
                             uid: uid,
+                            userData: userData,
                             customUsername: customUsername,
                             usernameSlug: usernameSlug,
                             postCount: visiblePostCount,
@@ -315,6 +556,7 @@ class _ProfileScreenState extends State<ProfileScreen>
   Widget _buildHeader(
       BuildContext context, {
         required String uid,
+        required Map<String, dynamic> userData,
         String? customUsername,
         String? usernameSlug,
         required int postCount,
@@ -354,7 +596,9 @@ class _ProfileScreenState extends State<ProfileScreen>
               ),
               Text(
                 'Profile',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                style: GoogleFonts.plusJakartaSans(
+                  color: AppColors.textPrimary,
+                  fontSize: 20,
                   fontWeight: FontWeight.bold,
                   letterSpacing: -0.5,
                 ),
@@ -405,7 +649,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                     displayName.isNotEmpty
                         ? displayName[0].toUpperCase()
                         : AnonymousIdentity.initialFor(uid),
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    style: GoogleFonts.plusJakartaSans(
+                      fontSize: 28,
                       fontWeight: FontWeight.bold,
                       color: gradient.first,
                     ),
@@ -417,17 +662,45 @@ class _ProfileScreenState extends State<ProfileScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      displayName,
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                      ),
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            displayName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: AppColors.textPrimary,
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        GestureDetector(
+                          onTap: () => _showEditUsernameDialog(userData, uid),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xff046CC8).withOpacity(0.15),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.edit_rounded,
+                              size: 14,
+                              color: Color(0xff046CC8),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Text(
                       handle,
-                      style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                      style: GoogleFonts.plusJakartaSans(
                         color: AppColors.muted,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -451,11 +724,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                           const SizedBox(width: 4),
                           Text(
                             'Anonymous Persona',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
+                            style: GoogleFonts.plusJakartaSans(
                               color: AppColors.textSecondary,
+                              fontSize: 11,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
@@ -474,11 +745,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                           const SizedBox(width: 4),
                           Text(
                             '$hiddenPostCount hidden',
-                            style: Theme.of(context)
-                                .textTheme
-                                .labelSmall
-                                ?.copyWith(
+                            style: GoogleFonts.plusJakartaSans(
                               color: AppColors.muted,
+                              fontSize: 11,
                             ),
                           ),
                         ],
@@ -530,11 +799,11 @@ class _ProfileScreenState extends State<ProfileScreen>
             subtitle: 'Manage email and custom username',
             iconColor: Colors.purpleAccent,
             onTap: () {
-              Navigator.of(context).pushNamed('/account-info');
+              _showEditUsernameDialog(userData, uid);
             },
           ),
 
-          // 🔥 DYNAMIC FIRESTORE ADMIN PANEL ACCESS 🔥
+          // Dynamic Firestore Admin Panel Access
           FutureBuilder<Map<String, dynamic>?>(
             future: _adminService.getAdminData(_currentUser?.email),
             builder: (context, snapshot) {
@@ -545,7 +814,9 @@ class _ProfileScreenState extends State<ProfileScreen>
 
               final adminData = snapshot.data!;
               final role =
-              (adminData['role'] ?? 'Admin').toString().toUpperCase();
+              (adminData['Position'] ?? adminData['role'] ?? 'Admin')
+                  .toString()
+                  .toUpperCase();
 
               return Padding(
                 padding: const EdgeInsets.only(top: AppSpacing.sm),
@@ -584,7 +855,8 @@ class _ProfileScreenState extends State<ProfileScreen>
                               padding: const EdgeInsets.all(8),
                               decoration: BoxDecoration(
                                 color: AppColors.primaryBlue.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(AppRadius.md),
+                                borderRadius:
+                                BorderRadius.circular(AppRadius.md),
                               ),
                               child: const Icon(
                                 Icons.admin_panel_settings_rounded,
@@ -601,12 +873,10 @@ class _ProfileScreenState extends State<ProfileScreen>
                                     children: [
                                       Text(
                                         'Admin Dashboard',
-                                        style: Theme.of(context)
-                                            .textTheme
-                                            .titleMedium
-                                            ?.copyWith(
+                                        style: GoogleFonts.plusJakartaSans(
                                           fontWeight: FontWeight.bold,
                                           color: AppColors.primaryBlue,
+                                          fontSize: 15,
                                         ),
                                       ),
                                       const SizedBox(width: 8),
@@ -622,7 +892,7 @@ class _ProfileScreenState extends State<ProfileScreen>
                                         ),
                                         child: Text(
                                           role,
-                                          style: const TextStyle(
+                                          style: GoogleFonts.plusJakartaSans(
                                             color: Colors.white,
                                             fontSize: 10,
                                             fontWeight: FontWeight.bold,
@@ -634,11 +904,9 @@ class _ProfileScreenState extends State<ProfileScreen>
                                   const SizedBox(height: 2),
                                   Text(
                                     'System management & user moderation',
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .labelSmall
-                                        ?.copyWith(
+                                    style: GoogleFonts.plusJakartaSans(
                                       color: AppColors.textSecondary,
+                                      fontSize: 11,
                                     ),
                                   ),
                                 ],
@@ -763,15 +1031,18 @@ class _MenuActionCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      style: GoogleFonts.plusJakartaSans(
+                        color: AppColors.textPrimary,
+                        fontSize: 15,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      style: GoogleFonts.plusJakartaSans(
                         color: AppColors.textSecondary,
+                        fontSize: 12,
                       ),
                     ),
                   ],
@@ -812,15 +1083,18 @@ class _StatCard extends StatelessWidget {
           children: [
             Text(
               value,
-              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              style: GoogleFonts.plusJakartaSans(
+                color: AppColors.textPrimary,
+                fontSize: 18,
                 fontWeight: FontWeight.bold,
               ),
             ),
             const SizedBox(height: 2),
             Text(
               label,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              style: GoogleFonts.plusJakartaSans(
                 color: AppColors.muted,
+                fontSize: 11,
               ),
             ),
           ],
@@ -892,8 +1166,9 @@ class _LogoutButton extends StatelessWidget {
               const SizedBox(width: 6),
               Text(
                 'Logout',
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                style: GoogleFonts.plusJakartaSans(
                   color: AppColors.error,
+                  fontSize: 12,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -944,10 +1219,13 @@ class _SegmentedTabBarDelegate extends SliverPersistentHeaderDelegate {
             ),
             labelColor: Colors.white,
             unselectedLabelColor: AppColors.muted,
-            labelStyle: Theme.of(context).textTheme.labelLarge?.copyWith(
+            labelStyle: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
               fontWeight: FontWeight.w600,
             ),
-            unselectedLabelStyle: Theme.of(context).textTheme.bodyMedium,
+            unselectedLabelStyle: GoogleFonts.plusJakartaSans(
+              fontSize: 13,
+            ),
             splashBorderRadius: BorderRadius.circular(AppRadius.pill),
             tabs: const [
               Tab(text: 'My Posts'),

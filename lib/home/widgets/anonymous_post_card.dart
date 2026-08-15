@@ -1,5 +1,6 @@
-import 'dart:ui';
+// lib/home/widgets/anonymous_post_card.dart
 
+import 'dart:ui';
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
@@ -15,6 +16,8 @@ class AnonymousPostCard extends StatefulWidget {
     required this.onBookmark,
     required this.onComment,
     required this.onShare,
+    this.currentUid,
+    this.onCommentCountChanged,
     this.isOwner = false,
     this.onEdit,
     this.onToggleHide,
@@ -22,10 +25,14 @@ class AnonymousPostCard extends StatefulWidget {
   });
 
   final PostModel post;
+  final String? currentUid;
   final VoidCallback onLike;
   final VoidCallback onBookmark;
   final VoidCallback onComment;
   final VoidCallback onShare;
+
+  /// Optional callback to notify parent feeds when commentCount updates
+  final ValueChanged<int>? onCommentCountChanged;
 
   /// When true, shows the owner action menu (Edit/Hide/Delete) behind
   /// the "···" icon. Callers must only pass true for posts the
@@ -87,7 +94,9 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
             ),
             padding: const EdgeInsets.all(AppSpacing.md),
             decoration: BoxDecoration(
-              color: AppColors.cardBackground.withValues(alpha: post.isHidden ? 0.55 : 0.82),
+              color: AppColors.cardBackground.withValues(
+                alpha: post.isHidden ? 0.55 : 0.82,
+              ),
               borderRadius: BorderRadius.circular(AppRadius.lg),
               border: Border.all(
                 color: post.isHidden
@@ -105,7 +114,10 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
                 ],
                 _buildHeader(context, gradient),
                 const SizedBox(height: AppSpacing.md),
-                Text(post.content, style: Theme.of(context).textTheme.bodyLarge),
+                Text(
+                  post.content,
+                  style: Theme.of(context).textTheme.bodyLarge,
+                ),
                 if (post.imageUrls.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.md),
                   _buildImage(post.imageUrls.first),
@@ -137,7 +149,11 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.visibility_off_rounded, size: 12, color: AppColors.muted),
+              const Icon(
+                Icons.visibility_off_rounded,
+                size: 12,
+                color: AppColors.muted,
+              ),
               const SizedBox(width: 4),
               Text(
                 'Only visible to you',
@@ -155,7 +171,8 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
 
   Widget _buildHeader(BuildContext context, List<Color> gradient) {
     final post = widget.post;
-    final String alias = post.webDisplayAlias ?? AnonymousIdentity.aliasFor(post.seed);
+    final String alias =
+        post.webDisplayAlias ?? AnonymousIdentity.aliasFor(post.seed);
     final String initial = alias.isNotEmpty
         ? alias[0].toUpperCase()
         : AnonymousIdentity.initialFor(post.seed);
@@ -187,10 +204,16 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
                     ),
                   ),
                   const SizedBox(width: 6),
-                  Text('· ${post.timeAgo}', style: Theme.of(context).textTheme.labelSmall),
+                  Text(
+                    '· ${post.timeAgo}',
+                    style: Theme.of(context).textTheme.labelSmall,
+                  ),
                   if (post.wasEdited) ...[
                     const SizedBox(width: 4),
-                    Text('· edited', style: Theme.of(context).textTheme.labelSmall),
+                    Text(
+                      '· edited',
+                      style: Theme.of(context).textTheme.labelSmall,
+                    ),
                   ],
                 ],
               ),
@@ -210,11 +233,19 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
             onTap: _handleOptionsTap,
             child: const Padding(
               padding: EdgeInsets.all(4),
-              child: Icon(Icons.more_horiz_rounded, color: AppColors.muted, size: 20),
+              child: Icon(
+                Icons.more_horiz_rounded,
+                color: AppColors.muted,
+                size: 20,
+              ),
             ),
           )
         else
-          const Icon(Icons.more_horiz_rounded, color: AppColors.muted, size: 20),
+          const Icon(
+            Icons.more_horiz_rounded,
+            color: AppColors.muted,
+            size: 20,
+          ),
       ],
     );
   }
@@ -262,7 +293,9 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
         ScaleTransition(
           scale: _likeController,
           child: _ActionChip(
-            icon: post.isLiked ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            icon: post.isLiked
+                ? Icons.favorite_rounded
+                : Icons.favorite_border_rounded,
             iconColor: post.isLiked ? AppColors.primaryBlue : AppColors.muted,
             label: '${post.likeCount}',
             onTap: _handleLikeTap,
@@ -287,8 +320,11 @@ class _AnonymousPostCardState extends State<AnonymousPostCard>
           child: Padding(
             padding: const EdgeInsets.all(6),
             child: Icon(
-              post.isBookmarked ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
-              color: post.isBookmarked ? AppColors.primaryBlue : AppColors.muted,
+              post.isBookmarked
+                  ? Icons.bookmark_rounded
+                  : Icons.bookmark_border_rounded,
+              color:
+              post.isBookmarked ? AppColors.primaryBlue : AppColors.muted,
               size: 20,
             ),
           ),

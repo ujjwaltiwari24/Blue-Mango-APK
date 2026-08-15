@@ -1,5 +1,7 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import '../../services/auth_service.dart';
 
@@ -11,7 +13,6 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-
   bool _loading = false;
 
   Future<void> _googleLogin() async {
@@ -22,9 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-
-      final result =
-      await AuthService.signInWithGoogle();
+      final result = await AuthService.signInWithGoogle();
 
       if (!mounted) return;
 
@@ -34,346 +33,326 @@ class _LoginScreenState extends State<LoginScreen> {
           "/feed",
         );
       }
-
     } catch (e) {
-
       if (!mounted) return;
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
+          backgroundColor: const Color(0xff18181B),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+            side: const BorderSide(color: Color(0xffEF4444), width: 1),
+          ),
           content: Text(
-            e.toString(),
+            "Couldn't sign in with Google. Please try again.",
+            style: GoogleFonts.plusJakartaSans(
+              color: const Color(0xffF4F4F5),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ),
       );
-
     } finally {
-
       if (mounted) {
         setState(() {
           _loading = false;
         });
       }
-
     }
   }
 
   @override
   Widget build(BuildContext context) {
-
     final size = MediaQuery.of(context).size;
+    final topPadding = MediaQuery.of(context).padding.top;
 
     return Scaffold(
-
-        backgroundColor: const Color(0xff09090B),
-
-    body: Stack(
-
-    children: [
-
-    /// Background Glow
-
-    Positioned(
-    top: -120,
-    left: -80,
-    child: Container(
-    width: 260,
-    height: 260,
-    decoration: BoxDecoration(
-    color: const Color(0xff44B0FF)
-        .withOpacity(.12),
-    shape: BoxShape.circle,
-    ),
-    ),
-    ),
-
-    Positioned(
-    bottom: -180,
-    right: -100,
-    child: Container(
-    width: 300,
-    height: 300,
-    decoration: BoxDecoration(
-    color: const Color(0xff192BC2)
-        .withOpacity(.15),
-    shape: BoxShape.circle,
-    ),
-    ),
-    ),
-
-    SafeArea(
-
-    child: SingleChildScrollView(
-
-    padding: const EdgeInsets.symmetric(
-    horizontal: 28,
-    ),
-
-    child: ConstrainedBox(
-
-    constraints: BoxConstraints(
-    minHeight:
-    size.height -
-    MediaQuery.of(context)
-        .padding
-        .top,
-    ),
-
-    child: Column(
-
-    mainAxisAlignment:
-    MainAxisAlignment.center,
-
-    children: [
-
-    Hero(
-
-    tag: "logo",
-
-    child: Image.asset(
-    "assets/images/logo.jpeg",
-    width: 140,
-    ),
-
-    ),
-
-    const SizedBox(height: 35),
-
-    const Text(
-
-    "Welcome to",
-
-    style: TextStyle(
-    color: Colors.white70,
-    fontSize: 20,
-    ),
-
-    ),
-
-    const SizedBox(height: 10),
-
-    const Text(
-
-    "BlueMango",
-
-    style: TextStyle(
-    color: Colors.white,
-    fontSize: 38,
-    fontWeight: FontWeight.w800,
-    letterSpacing: -.5,
-    ),
-
-    ),
-
-    const SizedBox(height: 14),
-
-    const Text(
-
-    "Speak Freely.\nStay Unknown.",
-
-    textAlign: TextAlign.center,
-
-    style: TextStyle(
-    color: Colors.grey,
-    fontSize: 16,
-    height: 1.5,
-    ),
-
-    ),
-
-    const SizedBox(height: 70),
-    Container(
-
-    width: double.infinity,
-
-    padding: const EdgeInsets.all(24),
-
-    decoration: BoxDecoration(
-
-    color: Colors.white.withOpacity(.05),
-
-    borderRadius: BorderRadius.circular(30),
-
-    border: Border.all(
-    color: Colors.white10,
-    ),
-
-    ),
-
-    child: Column(
-
-    children: [
-
-    const Text(
-
-    "Continue with your Google account",
-
-    textAlign: TextAlign.center,
-
-    style: TextStyle(
-
-    color: Colors.white,
-
-    fontSize: 18,
-
-    fontWeight: FontWeight.w700,
-
-    ),
-
-    ),
-
-    const SizedBox(height: 10),
-
-    const Text(
-
-    "BlueMango only supports secure Google Sign-In.\nNo passwords. No fake registrations.",
-
-    textAlign: TextAlign.center,
-
-    style: TextStyle(
-
-    color: Colors.white60,
-
-    fontSize: 14,
-
-    height: 1.5,
-
-    ),
-
-    ),
-
-    const SizedBox(height: 30),
-
-    SizedBox(
-
-    width: double.infinity,
-
-    height: 58,
-
-    child: ElevatedButton(
-
-    onPressed: _loading
-    ? null
-        : () {
-
-    HapticFeedback.lightImpact();
-
-    _googleLogin();
-
-    },
-
-    style: ElevatedButton.styleFrom(
-
-    backgroundColor: Colors.white,
-
-    foregroundColor: Colors.black,
-
-    elevation: 0,
-
-    shape: RoundedRectangleBorder(
-
-    borderRadius:
-    BorderRadius.circular(18),
-
-    ),
-
-    ),
-
-    child: _loading
-
-    ? const SizedBox(
-
-    width: 26,
-
-    height: 26,
-
-    child:
-    CircularProgressIndicator(
-
-    strokeWidth: 2.5,
-
-    ),
-
-    )
-
-        : Row(
-
-    mainAxisAlignment:
-    MainAxisAlignment.center,
-
-    children: [
-
-    Image.network(
-
-    "https://developers.google.com/identity/images/g-logo.png",
-
-    width: 24,
-
-    height: 24,
-
-    ),
-
-    const SizedBox(width: 14),
-
-    const Text(
-
-    "Continue with Google",
-
-    style: TextStyle(
-
-    fontSize: 17,
-
-    fontWeight:
-    FontWeight.w700,
-
-    ),
-
-    ),
-
-    ],
-
-    ),
-
-    ),
-
-    ),
-
-    const SizedBox(height: 28),
-
-    Text(
-
-    "By continuing you agree to our Terms of Service\nand Privacy Policy.",
-
-    textAlign: TextAlign.center,
-
-    style: TextStyle(
-
-    color: Colors.grey.shade500,
-
-    fontSize: 12,
-
-    height: 1.6,
-
-    ),
-
-    ),
-
-    ],
-
-    ),
-
-    ),
-
-    const SizedBox(height: 40),
-      const SizedBox(height: 30),
-
-    ],
-    ),
-    ),
-    ),
-    ),
-    ],
-    ),
+      backgroundColor: const Color(0xff09090B),
+      body: Stack(
+        children: [
+          /// Top Ambient Glow
+          Positioned(
+            top: -100,
+            left: -60,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xff046CC8).withOpacity(0.22),
+                    const Color(0xff046CC8).withOpacity(0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          /// Bottom Ambient Glow
+          Positioned(
+            bottom: -120,
+            right: -80,
+            child: Container(
+              width: 340,
+              height: 340,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    const Color(0xff023E7D).withOpacity(0.28),
+                    const Color(0xff023E7D).withOpacity(0.0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
+          SafeArea(
+            child: SingleChildScrollView(
+              physics: const ClampingScrollPhysics(),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  minHeight: size.height - topPadding,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const SizedBox(height: 20),
+
+                      /// Brand & Identity Section
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Hero(
+                            tag: "logo",
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: const Color(0xff046CC8)
+                                        .withOpacity(0.25),
+                                    blurRadius: 32,
+                                    spreadRadius: 4,
+                                  ),
+                                ],
+                              ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(28),
+                                child: Image.asset(
+                                  "assets/images/logo.jpeg",
+                                  width: 96,
+                                  height: 96,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      width: 96,
+                                      height: 96,
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xff046CC8),
+                                        borderRadius: BorderRadius.circular(24),
+                                      ),
+                                      child: const Center(
+                                        child: Text(
+                                          "🥭",
+                                          style: TextStyle(fontSize: 44),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 28),
+                          Text(
+                            "BlueMango",
+                            style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xffF4F4F5),
+                              fontSize: 34,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.8,
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            "You control your identity.\nConnect, share, and express freely.",
+                            textAlign: TextAlign.center,
+                            style: GoogleFonts.plusJakartaSans(
+                              color: const Color(0xffA1A1AA),
+                              fontSize: 15,
+                              height: 1.5,
+                              fontWeight: FontWeight.w400,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      /// Authentication Card
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.symmetric(vertical: 32),
+                        decoration: BoxDecoration(
+                          color: const Color(0xff111114),
+                          borderRadius: BorderRadius.circular(24),
+                          border: Border.all(
+                            color: Colors.white.withOpacity(0.08),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.4),
+                              blurRadius: 24,
+                              offset: const Offset(0, 8),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(24),
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                            child: Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Column(
+                                children: [
+                                  Text(
+                                    "Get Started",
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: const Color(0xffF4F4F5),
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.w700,
+                                      letterSpacing: -0.3,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    "Secure 1-tap Google Sign-In.\nNo passwords required.",
+                                    textAlign: TextAlign.center,
+                                    style: GoogleFonts.plusJakartaSans(
+                                      color: const Color(0xff7D8597),
+                                      fontSize: 13,
+                                      height: 1.4,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 24),
+                                  SizedBox(
+                                    width: double.infinity,
+                                    height: 52,
+                                    child: ElevatedButton(
+                                      onPressed: _loading
+                                          ? null
+                                          : () {
+                                        HapticFeedback.lightImpact();
+                                        _googleLogin();
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor:
+                                        const Color(0xffF4F4F5),
+                                        foregroundColor:
+                                        const Color(0xff09090B),
+                                        disabledBackgroundColor:
+                                        const Color(0xffF4F4F5)
+                                            .withOpacity(0.6),
+                                        elevation: 0,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                          BorderRadius.circular(14),
+                                        ),
+                                      ),
+                                      child: _loading
+                                          ? const SizedBox(
+                                        width: 22,
+                                        height: 22,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2.2,
+                                          valueColor:
+                                          AlwaysStoppedAnimation<
+                                              Color>(
+                                            Color(0xff09090B),
+                                          ),
+                                        ),
+                                      )
+                                          : Row(
+                                        mainAxisAlignment:
+                                        MainAxisAlignment.center,
+                                        children: [
+                                          const _GoogleIcon(),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            "Continue with Google",
+                                            style: GoogleFonts
+                                                .plusJakartaSans(
+                                              fontSize: 15,
+                                              fontWeight:
+                                              FontWeight.w700,
+                                              letterSpacing: -0.2,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      /// Footer Terms & Privacy
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 24),
+                        child: Text(
+                          "By continuing, you agree to BlueMango's\nTerms of Service & Privacy Policy",
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.plusJakartaSans(
+                            color: const Color(0xff5C677D),
+                            fontSize: 12,
+                            height: 1.5,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Custom vector Google logo to eliminate network image dependencies
+class _GoogleIcon extends StatelessWidget {
+  const _GoogleIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 20,
+      height: 20,
+      decoration: const BoxDecoration(
+        shape: BoxShape.circle,
+        color: Colors.white,
+      ),
+      child: Center(
+        child: Text(
+          "G",
+          style: GoogleFonts.plusJakartaSans(
+            color: const Color(0xff4285F4),
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ),
     );
   }
 }
